@@ -1,0 +1,71 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Online Exam Portal</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;background:#f4f7fb;color:#172033}
+header{background:#172554;color:#fff;padding:18px 28px;display:flex;justify-content:space-between;align-items:center}
+main{max-width:1100px;margin:28px auto;padding:0 18px}.card{background:#fff;border-radius:14px;padding:22px;margin-bottom:18px;box-shadow:0 4px 18px #00000012}
+input,select,button{font:inherit;padding:11px;border:1px solid #d5dbea;border-radius:8px}button{background:#2563eb;color:#fff;border:0;cursor:pointer}button.secondary{background:#64748b}button.danger{background:#dc2626}
+form{display:grid;gap:10px;max-width:500px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px solid #e8ebf2;text-align:left}
+.hidden{display:none}.muted{color:#64748b}.error{color:#b91c1c}.success{color:#15803d}.timer{font-size:22px;font-weight:700;position:sticky;top:10px;background:#fff;padding:12px;border-radius:10px;box-shadow:0 3px 15px #0002}
+.q{padding:18px 0;border-bottom:1px solid #e8ebf2}.opts label{display:block;padding:10px;margin:6px 0;background:#f8fafc;border-radius:8px;cursor:pointer}
+</style>
+</head>
+<body>
+<header><strong>Online Exam Portal</strong><span id="who"></span></header>
+<main>
+<section id="login" class="card">
+<h2>Login</h2><p class="muted">Use your Admin or Student username and password.</p>
+<form onsubmit="login(event)"><input id="username" placeholder="Username" required><input id="password" type="password" placeholder="Password" required><button>Login</button></form>
+<p id="loginMsg" class="error"></p>
+</section>
+
+<section id="app" class="hidden">
+<div id="admin" class="hidden">
+<div class="card"><h2>Admin Dashboard</h2><button class="secondary" onclick="logout()">Logout</button></div>
+<div class="grid">
+<div class="card"><h3>Create Student</h3><form onsubmit="createStudent(event)"><input id="sname" placeholder="Student name" required><input id="suser" placeholder="Username" required><input id="spass" placeholder="Password" required><button>Create</button></form></div>
+<div class="card"><h3>Create Exam</h3><form onsubmit="createExam(event)"><input id="etitle" placeholder="Exam title" required><input id="eduration" type="number" min="1" placeholder="Duration (minutes)" required><button>Create exam</button></form></div>
+</div>
+<div class="card"><h3>Upload Questions</h3><p class="muted">CSV columns: question, option_a, option_b, option_c, option_d, answer, marks</p>
+<form onsubmit="uploadQuestions(event)"><select id="examSelect" required></select><input id="qfile" type="file" accept=".csv" required><button>Upload CSV</button></form><p id="uploadMsg"></p></div>
+<div class="card"><h3>Exams</h3><div id="exams"></div></div>
+<div class="card"><h3>Students</h3><div id="students"></div></div>
+<div class="card"><h3>Results</h3><div id="results"></div></div>
+</div>
+
+<div id="student" class="hidden">
+<div class="card"><h2>Student Dashboard</h2><button class="secondary" onclick="logout()">Logout</button></div>
+<div id="studentHome"></div>
+</div>
+
+<div id="exam" class="hidden">
+<div class="timer">Time remaining: <span id="timer">--:--</span></div>
+<div class="card"><h2 id="examTitle"></h2><div id="questions"></div><button onclick="submitExam()">Submit Exam</button></div>
+</div>
+</section>
+</main>
+<script>
+let state={user:null,attempt:null,exam:null,questions:[],answers:{},timer:null};
+
+async function api(url,opt={}){const r=await fetch(url,opt);const d=await r.json();if(!r.ok)throw Error(d.error||"Request failed");return d}
+async function login(e){e.preventDefault();try{state.user=(await api("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:username.value,password:password.value})})).user;showApp()}catch(x){loginMsg.textContent=x.message}}
+async function logout(){await api("/api/logout",{method:"POST"});location.reload()}
+async function showApp(){document.getElementById("login").classList.add("hidden");document.getElementById("app").classList.remove("hidden");who.textContent=state.user.name+" ("+state.user.role+")";if(state.user.role==="admin"){admin.classList.remove("hidden");await loadAdmin()}else{student.classList.remove("hidden");await loadStudent()}}
+async function loadAdmin(){const [es,ss,rs]=await Promise.all([api("/api/admin/exams"),api("/api/admin/students"),api("/api/admin/results")]);exams.innerHTML="<table><tr><th>Title</th><th>Duration</th><th>Questions</th></tr>"+es.map(e=>`<tr><td>${e.title}</td><td>${e.duration_minutes} min</td><td>${e.question_count}</td></tr>`).join("")+"</table>";examSelect.innerHTML=es.map(e=>`<option value="${e.id}">${e.title}</option>`).join("");students.innerHTML="<table><tr><th>Name</th><th>Username</th></tr>"+ss.map(s=>`<tr><td>${s.name}</td><td>${s.username}</td></tr>`).join("")+"</table>";results.innerHTML="<table><tr><th>Exam</th><th>Student</th><th>Score</th><th>Submitted</th></tr>"+rs.map(r=>`<tr><td>${r.title}</td><td>${r.name} (${r.username})</td><td>${r.score}/${r.question_count}</td><td>${new Date(r.submitted_at).toLocaleString()}</td></tr>`).join("")+"</table>"}
+async function createStudent(e){e.preventDefault();try{await api("/api/admin/students",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:sname.value,username:suser.value,password:spass.value})});e.target.reset();loadAdmin()}catch(x){alert(x.message)}}
+async function createExam(e){e.preventDefault();try{await api("/api/admin/exams",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:etitle.value,duration_minutes:eduration.value})});e.target.reset();loadAdmin()}catch(x){alert(x.message)}}
+async function uploadQuestions(e){e.preventDefault();const fd=new FormData();fd.append("exam_id",examSelect.value);fd.append("file",qfile.files[0]);try{const d=await api("/api/admin/questions/upload",{method:"POST",body:fd});uploadMsg.className="success";uploadMsg.textContent=`Uploaded ${d.inserted} questions.`;loadAdmin()}catch(x){uploadMsg.className="error";uploadMsg.textContent=x.message}}
+async function loadStudent(){const es=await api("/api/student/exams");studentHome.innerHTML="<div class='grid'>"+es.map(e=>`<div class='card'><h3>${e.title}</h3><p>${e.question_count} questions · ${e.duration_minutes} minutes</p>${e.submitted_at?`<p class="success">Completed — Score: ${e.score}</p>`:`<button onclick="startExam(${e.id})">Start Exam</button>`}</div>`).join("")+"</div>"}
+async function startExam(id){try{const d=await api("/api/student/exams/"+id+"/start",{method:"POST"});state={...state,...d,answers:Object.fromEntries(d.answers.map(a=>[a.question_id,a.selected]))};student.classList.add("hidden");exam.classList.remove("hidden");examTitle.textContent=d.exam.title;renderQuestions();startTimer()}catch(x){alert(x.message)}}
+function renderQuestions(){questions.innerHTML=state.questions.map((q,i)=>`<div class="q"><h3>${i+1}. ${q.question} <small>(${q.marks} mark)</small></h3><div class="opts">${["A","B","C","D"].map(k=>`<label><input type="radio" name="q${q.id}" value="${k}" ${state.answers[q.id]===k?"checked":""} onchange="saveAnswer(${q.id},'${k}')"> ${k}. ${q["option_"+k.toLowerCase()]}</label>`).join("")}</div></div>`).join("")}
+async function saveAnswer(qid,selected){state.answers[qid]=selected;try{await api("/api/student/attempts/"+state.attempt.id+"/answer",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question_id:qid,selected})})}catch(x){alert(x.message)}}
+function startTimer(){clearInterval(state.timer);const end=state.attempt.started_at+state.exam.duration_minutes*60000;const tick=()=>{let sec=Math.max(0,Math.floor((end-Date.now())/1000));timer.textContent=String(Math.floor(sec/60)).padStart(2,"0")+":"+String(sec%60).padStart(2,"0");if(sec<=0){clearInterval(state.timer);submitExam(true)}};tick();state.timer=setInterval(tick,1000)}
+async function submitExam(auto=false){if(!auto&&!confirm("Submit your exam?"))return;try{const d=await api("/api/student/attempts/"+state.attempt.id+"/submit",{method:"POST"});clearInterval(state.timer);alert("Exam submitted. Your score: "+d.score);exam.classList.add("hidden");student.classList.remove("hidden");await loadStudent()}catch(x){alert(x.message)}}
+(async()=>{try{const d=await api("/api/me");if(d.user){state.user=d.user;showApp()}}catch(e){}})();
+</script>
+</body>
+</html>
